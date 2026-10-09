@@ -45,22 +45,67 @@ def required_env(name):
 
 
 def generate_content(client, system_prompt, user_prompt):
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.8,
-        max_tokens=700,
+    for attempt in range(1, 4):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            user_prompt
+                            + "\n\nأخرج المنشور النهائي كنص عادي "
+                            "جاهز للنشر، ولا ترجع رداً فارغاً."
+                        ),
+                    },
+                ],
+                temperature=0.7,
+                max_tokens=1000,
+            )
+
+            if not response.choices:
+                logging.warning(
+                    "Attempt %s: AI returned no choices.",
+                    attempt,
+                )
+            else:
+                choice = response.choices[0]
+                content = choice.message.content
+                finish_reason = choice.finish_reason
+
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+
+                logging.warning(
+                    "Attempt %s: empty content; finish_reason=%s",
+                    attempt,
+                    finish_reason,
+                )
+
+                if getattr(choice.message, "refusal", None):
+                    logging.warning(
+                        "AI refusal: %s",
+                        choice.message.refusal,
+                    )
+
+        except Exception as exc:
+            logging.warning(
+                "AI attempt %s failed: %s",
+                attempt,
+                str(exc)[:500],
+            )
+
+        if attempt < 3:
+            time.sleep(attempt * 2)
+
+    raise RuntimeError(
+        "AI returned no usable text after 3 attempts. "
+        "Check the logs above for finish_reason or API errors."
     )
-
-    content = response.choices[0].message.content
-
-    if not content or not content.strip():
-        raise RuntimeError("The AI returned empty content.")
-
-    return content.strip()
 
 
 def send_telegram_message(bot_token, chat_id, message):
@@ -75,7 +120,7 @@ def send_telegram_message(bot_token, chat_id, message):
         "disable_web_page_preview": True,
     }
 
-    for attempt in range(3):
+    for attempt in range(1, 4):
         try:
             response = requests.post(
                 url,
@@ -83,33 +128,37 @@ def send_telegram_message(bot_token, chat_id, message):
                 timeout=30,
             )
 
-            if response.ok:
+            try:
                 data = response.json()
+            except ValueError:
+                data = {}
 
-                if data.get("ok"):
-                    message_id = data.get(
-                        "result", {}
-                    ).get("message_id")
+            if response.ok and data.get("ok"):
+                message_id = data.get(
+                    "result", {}
+                ).get("message_id")
 
-                    logging.info(
-                        "Telegram post sent; message_id=%s",
-                        message_id,
-                    )
-                    return
+                logging.info(
+                    "Telegram post sent; message_id=%s",
+                    message_id,
+                )
+                return
 
             logging.error(
-                "Telegram returned HTTP %s: %s",
+                "Telegram HTTP %s: %s",
                 response.status_code,
                 response.text[:500],
             )
 
         except requests.RequestException as exc:
-            logging.error(
-                "Telegram request failed: %s", exc
+            logging.warning(
+                "Telegram attempt %s failed: %s",
+                attempt,
+                exc,
             )
 
-        if attempt < 2:
-            time.sleep(2 * (attempt + 1))
+        if attempt < 3:
+            time.sleep(attempt * 2)
 
     raise RuntimeError(
         "Failed to send the post to Telegram after 3 attempts."
@@ -135,17 +184,15 @@ def main():
     selected_wing = os.getenv("WING")
 
     if selected_wing:
-        matching_wings = [
+        wings_to_run = [
             wing for wing in WINGS
             if wing[0] == selected_wing
         ]
 
-        if not matching_wings:
+        if not wings_to_run:
             raise RuntimeError(
                 f"Unknown WING value: {selected_wing}"
             )
-
-        wings_to_run = matching_wings
     else:
         wings_to_run = [random.choice(WINGS)]
 
