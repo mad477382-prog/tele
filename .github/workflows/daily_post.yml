@@ -1,36 +1,38 @@
+
 name: FilmFilesX Auto Publisher
 
 'on':
-schedule:
-- cron: '17 6,12,18 * * *'
-workflow_dispatch:
+  schedule:
+    - cron: '17 6,12,18 * * *'
+  workflow_dispatch:
 
 permissions:
-contents: read
+  contents: read
 
 jobs:
-publish:
-runs-on: ubuntu-latest
-timeout-minutes: 5
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
 
-env:
-  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-  OPENROUTER_MODEL: openrouter/free
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      OPENROUTER_MODEL: openrouter/free
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.11'
-      cache: pip
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
 
-  - name: Install dependencies
-    run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-  - name: Run publisher
-    run: python -u main.py
+      - name: Run publisher
+        run: python -u main.py
+        
